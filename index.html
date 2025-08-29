@@ -48,6 +48,16 @@
       .animated-terminal {
         animation: text-flicker-subtle 8s linear infinite;
       }
+      
+      @keyframes blink-animation {
+        to {
+          visibility: hidden;
+        }
+      }
+
+      .cursor-animation {
+        animation: blink-animation 1s steps(2, start) infinite;
+      }
     </style>
   <script type="importmap">
 {

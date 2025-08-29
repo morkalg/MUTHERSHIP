@@ -9,17 +9,25 @@ interface PlayerTerminalProps {
   currentUserRole: string | null;
 }
 
-const BlinkingCursor: React.FC<{ colorTheme: ColorTheme }> = ({ colorTheme }) => (
-  <span className={`${colorTheme.bgAccent} w-3 h-5 inline-block -mb-1 animate-pulse`} />
+const AnimatedCursor: React.FC<{ colorTheme: ColorTheme }> = ({ colorTheme }) => (
+  <span className={`${colorTheme.bgAccent} w-3 h-5 inline-block -mb-1 cursor-animation`} />
 );
 
 const PlayerTerminal: React.FC<PlayerTerminalProps> = ({ history, isLoading, onSendCommand, colorTheme, currentUserRole }) => {
   const [inputValue, setInputValue] = useState<string>('');
   const endOfHistoryRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     endOfHistoryRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [history]);
+
+  useEffect(() => {
+    // Re-focus the input field whenever the AI is finished responding.
+    if (!isLoading) {
+      inputRef.current?.focus();
+    }
+  }, [isLoading]);
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -50,19 +58,22 @@ const PlayerTerminal: React.FC<PlayerTerminalProps> = ({ history, isLoading, onS
         <div ref={endOfHistoryRef} />
       </div>
       <form onSubmit={handleSubmit} className="mt-2">
-        <div className="flex items-center">
-           <span className={`${colorTheme.textSecondary} mr-2`}>{promptSymbol}&gt;</span>
+        <div className="flex items-center flex-nowrap">
+           <span className={`${colorTheme.textSecondary} mr-2 flex-shrink-0`}>{promptSymbol}&gt;</span>
           <input
+            ref={inputRef}
             type="text"
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
             disabled={isLoading}
-            className={`bg-transparent border-none focus:ring-0 outline-none w-full p-0 m-0 ${colorTheme.textPrimary}`}
+            className={`bg-transparent border-none focus:ring-0 outline-none flex-1 min-w-0 p-0 m-0 ${colorTheme.textPrimary}`}
             autoFocus
             autoComplete="off"
             spellCheck="false"
           />
-          {!isLoading && <BlinkingCursor colorTheme={colorTheme} />}
+          <div className="flex-shrink-0">
+            {!isLoading && <AnimatedCursor colorTheme={colorTheme} />}
+          </div>
         </div>
       </form>
     </div>

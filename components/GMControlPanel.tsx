@@ -135,10 +135,12 @@ const GMControlPanel: React.FC<GMControlPanelProps> = (props) => {
 
   const handleSaveCrew = () => {
     if (!crewName.trim() || !crewRole.trim() || !crewPassword.trim()) return;
+    const finalName = crewName.trim().toUpperCase();
+    const finalRole = crewRole.trim().toUpperCase();
     if (editingCrew) {
-        onUpdateCrewMember(editingCrew.id, crewName.toUpperCase(), crewRole.toUpperCase(), crewPassword);
+        onUpdateCrewMember(editingCrew.id, finalName, finalRole, crewPassword);
     } else {
-        onAddCrewMember(crewName.toUpperCase(), crewRole.toUpperCase(), crewPassword);
+        onAddCrewMember(finalName, finalRole, crewPassword);
     }
     setEditingCrew(null);
   };
