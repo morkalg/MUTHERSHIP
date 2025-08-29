@@ -1,0 +1,5 @@
+{
+  "name": "MUTHER Terminal",
+  "description": "A retro-futuristic terminal interface for TTRPGs, powered by Gemini. Allows a Game Master to feed in custom lore for an AI to use when responding to player queries, simulating an interactive ship's computer.",
+  "requestFramePermissions": []
+}
