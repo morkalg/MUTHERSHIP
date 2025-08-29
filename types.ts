@@ -3,11 +3,19 @@ export interface DataLog {
   id: string;
   title: string;
   content: string;
+  requiredRole: string | null;
 }
 
 export interface TerminalEntry {
   type: 'command' | 'response';
   text: string;
+}
+
+export interface CrewMember {
+    id: string;
+    name: string;
+    role: string;
+    password: string;
 }
 
 export interface ColorTheme {

@@ -6,13 +6,14 @@ interface PlayerTerminalProps {
   isLoading: boolean;
   onSendCommand: (command: string) => void;
   colorTheme: ColorTheme;
+  currentUserRole: string | null;
 }
 
 const BlinkingCursor: React.FC<{ colorTheme: ColorTheme }> = ({ colorTheme }) => (
   <span className={`${colorTheme.bgAccent} w-3 h-5 inline-block -mb-1 animate-pulse`} />
 );
 
-const PlayerTerminal: React.FC<PlayerTerminalProps> = ({ history, isLoading, onSendCommand, colorTheme }) => {
+const PlayerTerminal: React.FC<PlayerTerminalProps> = ({ history, isLoading, onSendCommand, colorTheme, currentUserRole }) => {
   const [inputValue, setInputValue] = useState<string>('');
   const endOfHistoryRef = useRef<HTMLDivElement>(null);
 
@@ -26,6 +27,8 @@ const PlayerTerminal: React.FC<PlayerTerminalProps> = ({ history, isLoading, onS
     setInputValue('');
   };
 
+  const promptSymbol = currentUserRole ? `[${currentUserRole}]` : '';
+
   return (
     <div className={`flex flex-col h-full w-full bg-black/50 border-2 p-4 rounded-lg overflow-hidden animated-terminal ${colorTheme.border} ${colorTheme.glow}`}>
       <div className="flex-1 overflow-y-auto pr-2">
@@ -33,7 +36,9 @@ const PlayerTerminal: React.FC<PlayerTerminalProps> = ({ history, isLoading, onS
           <div key={index} className="mb-2 whitespace-pre-wrap break-words">
             {entry.type === 'command' ? (
               <div>
-                <span className={`${colorTheme.textSecondary} mr-2`}>{'>'}</span>
+                 <span className={`${colorTheme.textSecondary} mr-2`}>
+                   {entry.text.toUpperCase().startsWith('LOGIN') ? '' : (currentUserRole ? `[${currentUserRole}]` : '')}&gt;
+                 </span>
                 <span>{entry.text}</span>
               </div>
             ) : (
@@ -46,7 +51,7 @@ const PlayerTerminal: React.FC<PlayerTerminalProps> = ({ history, isLoading, onS
       </div>
       <form onSubmit={handleSubmit} className="mt-2">
         <div className="flex items-center">
-          <span className={`${colorTheme.textSecondary} mr-2`}>{'>'}</span>
+           <span className={`${colorTheme.textSecondary} mr-2`}>{promptSymbol}&gt;</span>
           <input
             type="text"
             value={inputValue}

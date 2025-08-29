@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import { DataLog, TerminalEntry, ColorTheme } from './types';
+import { DataLog, TerminalEntry, ColorTheme, CrewMember } from './types';
 import GMControlPanel from './components/GMControlPanel';
 import PlayerTerminal from './components/PlayerTerminal';
 import { getAIResponseStream } from './services/geminiService';
@@ -11,12 +11,18 @@ const initialLogs: DataLog[] = [
     id: '1',
     title: 'CREW MANIFEST',
     content: 'DALLAS, A.G. (CAPTAIN)\nKANE, G.W. (EXECUTIVE OFFICER)\nRIPLEY, E.L. (WARRANT OFFICER)\nASH (SCIENCE OFFICER)\nPARKER, J.T. (CHIEF ENGINEER)\nBRETT, S.A. (ENGINEERING TECHNICIAN)\nLAMBERT, J.M. (NAVIGATOR)',
+    requiredRole: null,
   },
   {
     id: '2',
     title: 'SPECIAL ORDER 937',
     content: 'PRIORITY ONE. INSURE RETURN OF ORGANISM FOR ANALYSIS. ALL OTHER CONSIDERATIONS SECONDARY. CREW EXPENDABLE.',
+    requiredRole: 'CAPTAIN',
   }
+];
+
+const initialCrew: CrewMember[] = [
+    { id: 'crew-1', name: 'DALLAS', role: 'CAPTAIN', password: 'password' }
 ];
 
 const colorThemes: Record<string, ColorTheme> = {
@@ -76,6 +82,7 @@ const colorThemes: Record<string, ColorTheme> = {
 
 function App() {
   const [dataLogs, setDataLogs] = useState<DataLog[]>(initialLogs);
+  const [crewMembers, setCrewMembers] = useState<CrewMember[]>(initialCrew);
   const [systemPersona, setSystemPersona] = useState<string>(initialPersona);
   const [terminalHistory, setTerminalHistory] = useState<TerminalEntry[]>([
       { type: 'response', text: 'MUTHER 6000 ONLINE. AWAITING DIRECTIVE.' }
@@ -83,19 +90,32 @@ function App() {
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isGmPanelVisible, setIsGmPanelVisible] = useState<boolean>(true);
   const [terminalColor, setTerminalColor] = useState<string>('blue');
+  const [currentUserRole, setCurrentUserRole] = useState<string | null>(null);
 
   const currentTheme = colorThemes[terminalColor];
 
-  const handleAddLog = (title: string, content: string) => {
-    setDataLogs(prev => [...prev, { id: Date.now().toString(), title, content }]);
+  const handleAddLog = (title: string, content: string, requiredRole: string | null) => {
+    setDataLogs(prev => [...prev, { id: Date.now().toString(), title, content, requiredRole }]);
   };
 
   const handleDeleteLog = (id: string) => {
     setDataLogs(prev => prev.filter(log => log.id !== id));
   };
 
-  const handleUpdateLog = (id: string, title: string, content: string) => {
-    setDataLogs(prev => prev.map(log => (log.id === id ? { ...log, title, content } : log)));
+  const handleUpdateLog = (id: string, title: string, content: string, requiredRole: string | null) => {
+    setDataLogs(prev => prev.map(log => (log.id === id ? { ...log, title, content, requiredRole } : log)));
+  };
+
+  const handleAddCrewMember = (name: string, role: string, password: string) => {
+    setCrewMembers(prev => [...prev, { id: `crew-${Date.now()}`, name, role, password }]);
+  };
+  
+  const handleUpdateCrewMember = (id: string, name: string, role: string, password: string) => {
+    setCrewMembers(prev => prev.map(crew => (crew.id === id ? { ...crew, name, role, password } : crew)));
+  };
+  
+  const handleDeleteCrewMember = (id: string) => {
+    setCrewMembers(prev => prev.filter(crew => crew.id !== id));
   };
 
   const handleClearTerminal = () => {
@@ -107,16 +127,45 @@ function App() {
   const handleSendCommand = useCallback(async (command: string) => {
     if (isLoading || !command.trim()) return;
 
+    const newCommandEntry: TerminalEntry = { type: 'command', text: command };
+    setTerminalHistory(prev => [...prev, newCommandEntry]);
+    
+    const commandParts = command.trim().split(/\s+/);
+    const commandAction = commandParts[0].toUpperCase();
+
+    // --- Handle local commands (LOGIN, LOGOUT) ---
+    if (commandAction === 'LOGIN') {
+        if (commandParts.length !== 3) {
+            setTerminalHistory(prev => [...prev, { type: 'response', text: 'SYNTAX ERROR. USAGE: LOGIN <NAME> <PASSWORD>' }]);
+            return;
+        }
+        const name = commandParts[1].toUpperCase();
+        const password = commandParts[2];
+        const crewMember = crewMembers.find(c => c.name.toUpperCase() === name && c.password === password);
+        
+        if (crewMember) {
+            setCurrentUserRole(crewMember.role);
+            setTerminalHistory(prev => [...prev, { type: 'response', text: `ACCESS GRANTED. WELCOME, ${crewMember.role}.` }]);
+        } else {
+            setTerminalHistory(prev => [...prev, { type: 'response', text: `ACCESS DENIED. INVALID CREDENTIALS.` }]);
+        }
+        return;
+    }
+
+    if (commandAction === 'LOGOUT') {
+        setCurrentUserRole(null);
+        setTerminalHistory(prev => [...prev, { type: 'response', text: `USER LOGGED OUT. TERMINAL SECURED.` }]);
+        return;
+    }
+
+    // --- Handle AI commands ---
     setIsLoading(true);
-    const newHistory: TerminalEntry[] = [
-      ...terminalHistory,
-      { type: 'command', text: command },
-      { type: 'response', text: '' } // Placeholder for streaming response
-    ];
-    setTerminalHistory(newHistory);
+    const responsePlaceholder: TerminalEntry = { type: 'response', text: '' };
+    setTerminalHistory(prev => [...prev, responsePlaceholder]);
 
     try {
-      const stream = getAIResponseStream(systemPersona, dataLogs, command);
+      const accessibleLogs = dataLogs.filter(log => !log.requiredRole || log.requiredRole === currentUserRole);
+      const stream = getAIResponseStream(systemPersona, accessibleLogs, command);
       for await (const textChunk of stream) {
         setTerminalHistory(prev => {
           const updatedHistory = [...prev];
@@ -130,14 +179,22 @@ function App() {
     } catch (error) {
       console.error("Error getting AI response:", error);
       const errorMessage = error instanceof Error ? error.message : "An unknown error occurred.";
-      setTerminalHistory(prev => [
-        ...prev,
-        { type: 'response', text: `// MUTHER SYSTEM ERROR: ${errorMessage}` }
-      ]);
+      setTerminalHistory(prev => {
+          const updatedHistory = [...prev];
+          const lastEntry = updatedHistory[updatedHistory.length - 1];
+          if (lastEntry && lastEntry.type === 'response' && lastEntry.text === '') {
+            // Replace placeholder if it's empty
+            updatedHistory[updatedHistory.length - 1] = { type: 'response', text: `// MUTHER SYSTEM ERROR: ${errorMessage}` };
+          } else {
+            // Add a new error entry if something was already streamed
+            updatedHistory.push({ type: 'response', text: `// MUTHER SYSTEM ERROR: ${errorMessage}` });
+          }
+          return updatedHistory;
+      });
     } finally {
       setIsLoading(false);
     }
-  }, [isLoading, terminalHistory, systemPersona, dataLogs]);
+  }, [isLoading, systemPersona, dataLogs, crewMembers, currentUserRole]);
 
   return (
     <div className={`bg-black font-mono min-h-screen text-lg ${currentTheme.textPrimary} ${currentTheme.selection}`}>
@@ -146,10 +203,14 @@ function App() {
         <GMControlPanel
           dataLogs={dataLogs}
           systemPersona={systemPersona}
+          crewMembers={crewMembers}
           onAddLog={handleAddLog}
           onDeleteLog={handleDeleteLog}
           onUpdateLog={handleUpdateLog}
           onSetSystemPersona={setSystemPersona}
+          onAddCrewMember={handleAddCrewMember}
+          onUpdateCrewMember={handleUpdateCrewMember}
+          onDeleteCrewMember={handleDeleteCrewMember}
           isVisible={isGmPanelVisible}
           onToggleVisibility={() => setIsGmPanelVisible(!isGmPanelVisible)}
           colorTheme={currentTheme}
@@ -162,6 +223,7 @@ function App() {
             isLoading={isLoading}
             onSendCommand={handleSendCommand}
             colorTheme={currentTheme}
+            currentUserRole={currentUserRole}
           />
         </div>
       </div>
