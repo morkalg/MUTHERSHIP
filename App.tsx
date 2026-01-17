@@ -22,8 +22,16 @@ const initialLogs: DataLog[] = [
 ];
 
 const initialCrew: CrewMember[] = [
-    { id: 'crew-1', name: 'DALLAS', role: 'CAPTAIN', password: 'password' }
+  { id: 'crew-1', name: 'DALLAS', role: 'CAPTAIN', password: 'password' }
 ];
+
+type InteractionMode = 'COMMAND' | 'LOGIN_USERNAME' | 'LOGIN_PASSWORD';
+
+interface InteractionState {
+  mode: InteractionMode;
+  tempUsername?: string;
+}
+
 
 const colorThemes: Record<string, ColorTheme> = {
   blue: {
@@ -85,12 +93,13 @@ function App() {
   const [crewMembers, setCrewMembers] = useState<CrewMember[]>(initialCrew);
   const [systemPersona, setSystemPersona] = useState<string>(initialPersona);
   const [terminalHistory, setTerminalHistory] = useState<TerminalEntry[]>([
-      { type: 'response', text: 'MUTHER 6000 ONLINE. AWAITING DIRECTIVE.' }
+    { type: 'response', text: 'MUTHER 6000 ONLINE. AWAITING DIRECTIVE.' }
   ]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isGmPanelVisible, setIsGmPanelVisible] = useState<boolean>(true);
   const [terminalColor, setTerminalColor] = useState<string>('blue');
   const [currentUserRole, setCurrentUserRole] = useState<string | null>(null);
+  const [interactionState, setInteractionState] = useState<InteractionState>({ mode: 'COMMAND' });
 
   const currentTheme = colorThemes[terminalColor];
 
@@ -109,11 +118,11 @@ function App() {
   const handleAddCrewMember = (name: string, role: string, password: string) => {
     setCrewMembers(prev => [...prev, { id: `crew-${Date.now()}`, name, role, password }]);
   };
-  
+
   const handleUpdateCrewMember = (id: string, name: string, role: string, password: string) => {
     setCrewMembers(prev => prev.map(crew => (crew.id === id ? { ...crew, name, role, password } : crew)));
   };
-  
+
   const handleDeleteCrewMember = (id: string) => {
     setCrewMembers(prev => prev.filter(crew => crew.id !== id));
   };
@@ -127,35 +136,70 @@ function App() {
   const handleSendCommand = useCallback(async (command: string) => {
     if (isLoading || !command.trim()) return;
 
-    const newCommandEntry: TerminalEntry = { type: 'command', text: command };
+    // Handle Password Input Masking in History (optional - currently showing cleartext for simplicity, or we can just not show it in history)
+    // For now, we push the command to history.
+    const newCommandEntry: TerminalEntry = { type: 'command', text: interactionState.mode === 'LOGIN_PASSWORD' ? '********' : command };
     setTerminalHistory(prev => [...prev, newCommandEntry]);
-    
+
+    // --- Interactive State Handling ---
+    if (interactionState.mode === 'LOGIN_USERNAME') {
+      const username = command.trim().toUpperCase();
+      setInteractionState({ mode: 'LOGIN_PASSWORD', tempUsername: username });
+      setTerminalHistory(prev => [...prev, { type: 'response', text: 'PASSCODE:' }]);
+      return;
+    }
+
+    if (interactionState.mode === 'LOGIN_PASSWORD') {
+      const password = command.trim();
+      const username = interactionState.tempUsername;
+      const crewMember = crewMembers.find(c => c.name.toUpperCase() === username && c.password === password);
+
+      if (crewMember) {
+        setCurrentUserRole(crewMember.role);
+        setTerminalHistory(prev => [...prev, { type: 'response', text: `ACCESS GRANTED. WELCOME, ${crewMember.role}.` }]);
+      } else {
+        setTerminalHistory(prev => [...prev, { type: 'response', text: `ACCESS DENIED. INVALID CREDENTIALS.` }]);
+      }
+      setInteractionState({ mode: 'COMMAND' });
+      return;
+    }
+
+    // --- Standard Command Handling ---
     const commandParts = command.trim().split(/\s+/);
     const commandAction = commandParts[0].toUpperCase();
 
     // --- Handle local commands (LOGIN, LOGOUT) ---
-    if (commandAction === 'LOGIN') {
-        if (commandParts.length !== 3) {
-            setTerminalHistory(prev => [...prev, { type: 'response', text: 'SYNTAX ERROR. USAGE: LOGIN <NAME> <PASSWORD>' }]);
-            return;
-        }
+    if (commandAction === 'LOGIN' || commandAction === 'LOGON') {
+      // Quick login: LOGIN NAME PASS
+      if (commandParts.length === 3) {
         const name = commandParts[1].toUpperCase();
         const password = commandParts[2];
         const crewMember = crewMembers.find(c => c.name.toUpperCase() === name && c.password === password);
-        
+
         if (crewMember) {
-            setCurrentUserRole(crewMember.role);
-            setTerminalHistory(prev => [...prev, { type: 'response', text: `ACCESS GRANTED. WELCOME, ${crewMember.role}.` }]);
+          setCurrentUserRole(crewMember.role);
+          setTerminalHistory(prev => [...prev, { type: 'response', text: `ACCESS GRANTED. WELCOME, ${crewMember.role}.` }]);
         } else {
-            setTerminalHistory(prev => [...prev, { type: 'response', text: `ACCESS DENIED. INVALID CREDENTIALS.` }]);
+          setTerminalHistory(prev => [...prev, { type: 'response', text: `ACCESS DENIED. INVALID CREDENTIALS.` }]);
         }
         return;
+      }
+
+      // Interactive login: LOGIN / LOGON
+      if (commandParts.length === 1) {
+        setInteractionState({ mode: 'LOGIN_USERNAME' });
+        setTerminalHistory(prev => [...prev, { type: 'response', text: 'IDENTITY:' }]);
+        return;
+      }
+
+      setTerminalHistory(prev => [...prev, { type: 'response', text: 'SYNTAX ERROR. USAGE: LOGON OR LOGON <NAME> <PASSWORD>' }]);
+      return;
     }
 
     if (commandAction === 'LOGOUT') {
-        setCurrentUserRole(null);
-        setTerminalHistory(prev => [...prev, { type: 'response', text: `USER LOGGED OUT. TERMINAL SECURED.` }]);
-        return;
+      setCurrentUserRole(null);
+      setTerminalHistory(prev => [...prev, { type: 'response', text: `USER LOGGED OUT. TERMINAL SECURED.` }]);
+      return;
     }
 
     // --- Handle AI commands ---
@@ -169,9 +213,13 @@ function App() {
       for await (const textChunk of stream) {
         setTerminalHistory(prev => {
           const updatedHistory = [...prev];
-          const lastEntry = updatedHistory[updatedHistory.length - 1];
+          const lastIndex = updatedHistory.length - 1;
+          const lastEntry = updatedHistory[lastIndex];
           if (lastEntry && lastEntry.type === 'response') {
-            lastEntry.text += textChunk;
+            updatedHistory[lastIndex] = {
+              ...lastEntry,
+              text: lastEntry.text + textChunk
+            };
           }
           return updatedHistory;
         });
@@ -180,21 +228,21 @@ function App() {
       console.error("Error getting AI response:", error);
       const errorMessage = error instanceof Error ? error.message : "An unknown error occurred.";
       setTerminalHistory(prev => {
-          const updatedHistory = [...prev];
-          const lastEntry = updatedHistory[updatedHistory.length - 1];
-          if (lastEntry && lastEntry.type === 'response' && lastEntry.text === '') {
-            // Replace placeholder if it's empty
-            updatedHistory[updatedHistory.length - 1] = { type: 'response', text: `// MUTHER SYSTEM ERROR: ${errorMessage}` };
-          } else {
-            // Add a new error entry if something was already streamed
-            updatedHistory.push({ type: 'response', text: `// MUTHER SYSTEM ERROR: ${errorMessage}` });
-          }
-          return updatedHistory;
+        const updatedHistory = [...prev];
+        const lastEntry = updatedHistory[updatedHistory.length - 1];
+        if (lastEntry && lastEntry.type === 'response' && lastEntry.text === '') {
+          // Replace placeholder if it's empty
+          updatedHistory[updatedHistory.length - 1] = { type: 'response', text: `// MUTHER SYSTEM ERROR: ${errorMessage}` };
+        } else {
+          // Add a new error entry if something was already streamed
+          updatedHistory.push({ type: 'response', text: `// MUTHER SYSTEM ERROR: ${errorMessage}` });
+        }
+        return updatedHistory;
       });
     } finally {
       setIsLoading(false);
     }
-  }, [isLoading, systemPersona, dataLogs, crewMembers, currentUserRole]);
+  }, [isLoading, systemPersona, dataLogs, crewMembers, currentUserRole, interactionState]);
 
   return (
     <div className={`bg-black font-mono min-h-screen text-lg ${currentTheme.textPrimary} ${currentTheme.selection}`}>
