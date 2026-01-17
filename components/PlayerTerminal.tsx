@@ -57,24 +57,31 @@ const PlayerTerminal: React.FC<PlayerTerminalProps> = ({ history, isLoading, onS
         {isLoading && <p className="animate-pulse">PROCESSING...</p>}
         <div ref={endOfHistoryRef} />
       </div>
-      <form onSubmit={handleSubmit} className="mt-2">
-        <div className="flex items-center flex-nowrap">
-           <span className={`${colorTheme.textSecondary} mr-2 flex-shrink-0`}>{promptSymbol}&gt;</span>
-          <input
-            ref={inputRef}
-            type="text"
-            value={inputValue}
-            onChange={(e) => setInputValue(e.target.value)}
-            disabled={isLoading}
-            className={`bg-transparent border-none focus:ring-0 outline-none flex-1 min-w-0 p-0 m-0 ${colorTheme.textPrimary}`}
-            autoFocus
-            autoComplete="off"
-            spellCheck="false"
-          />
-          <div className="flex-shrink-0">
-            {!isLoading && <AnimatedCursor colorTheme={colorTheme} />}
-          </div>
-        </div>
+      <form onSubmit={handleSubmit} className="mt-2 relative" onClick={() => inputRef.current?.focus()}>
+         <div className="flex items-center flex-wrap">
+            <span className={`${colorTheme.textSecondary} mr-2 flex-shrink-0`}>{promptSymbol}&gt;</span>
+            <div className="relative flex-1 flex items-center min-w-0">
+               {/* Visible "Ghost" Text for alignment */}
+               <span className={`whitespace-pre-wrap break-all ${colorTheme.textPrimary}`}>
+                  {inputValue}
+               </span>
+               {/* Cursor follows the text immediately */}
+               {!isLoading && <AnimatedCursor colorTheme={colorTheme} />}
+
+               {/* Invisible actual input covering the area to capture typing */}
+               <input
+                  ref={inputRef}
+                  type="text"
+                  value={inputValue}
+                  onChange={(e) => setInputValue(e.target.value)}
+                  disabled={isLoading}
+                  className="opacity-0 absolute inset-0 w-full h-full cursor-text bg-transparent border-none focus:ring-0 outline-none p-0 m-0"
+                  autoFocus
+                  autoComplete="off"
+                  spellCheck="false"
+               />
+            </div>
+         </div>
       </form>
     </div>
   );
