@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import { DataLog, TerminalEntry, ColorTheme, CrewMember } from './types';
+import { DataLog, TerminalEntry, ColorTheme, CrewMember, ShipSystem } from './types';
 import GMControlPanel from './components/GMControlPanel';
 import PlayerTerminal from './components/PlayerTerminal';
 import { getAIResponseStream } from './services/geminiService';
@@ -100,6 +100,11 @@ function App() {
   const [terminalColor, setTerminalColor] = useState<string>('blue');
   const [currentUserRole, setCurrentUserRole] = useState<string | null>(null);
   const [interactionState, setInteractionState] = useState<InteractionState>({ mode: 'COMMAND' });
+  const [shipSystems, setShipSystems] = useState<ShipSystem[]>([
+    { id: 'sys-1', name: 'HYPERDRIVE', status: 'OPTIMAL', details: 'FUSION INJECTORS STABLE. COOLANT LEVELS NORMAL.' },
+    { id: 'sys-2', name: 'LIFE SUPPORT', status: 'OPTIMAL', details: 'O2 SCRUBBERS AT 98% EFFICIENCY.' },
+    { id: 'sys-3', name: 'COMMS ARRAY', status: 'DAMAGED', details: 'LONG RANGE TRANSMITTER OFFLINE. LOCAL CHANNELS ONLY.' },
+  ]);
 
   const currentTheme = colorThemes[terminalColor];
 
@@ -125,6 +130,18 @@ function App() {
 
   const handleDeleteCrewMember = (id: string) => {
     setCrewMembers(prev => prev.filter(crew => crew.id !== id));
+  };
+
+  const handleAddSystem = (name: string, status: any, details: string) => {
+    setShipSystems(prev => [...prev, { id: `sys-${Date.now()}`, name, status, details }]);
+  };
+
+  const handleUpdateSystem = (id: string, name: string, status: any, details: string) => {
+    setShipSystems(prev => prev.map(s => s.id === id ? { ...s, name, status, details } : s));
+  };
+
+  const handleDeleteSystem = (id: string) => {
+    setShipSystems(prev => prev.filter(s => s.id !== id));
   };
 
   const handleClearTerminal = () => {
@@ -209,20 +226,86 @@ function App() {
 
     try {
       const accessibleLogs = dataLogs.filter(log => !log.requiredRole || log.requiredRole === currentUserRole);
-      const stream = getAIResponseStream(systemPersona, accessibleLogs, command);
-      for await (const textChunk of stream) {
+      const stream = getAIResponseStream(systemPersona, accessibleLogs, shipSystems, command);
+      let buffer = '';
+
+      // Helper to append text to the latest response entry
+      const appendText = (text: string) => {
         setTerminalHistory(prev => {
           const updatedHistory = [...prev];
-          const lastIndex = updatedHistory.length - 1;
-          const lastEntry = updatedHistory[lastIndex];
-          if (lastEntry && lastEntry.type === 'response') {
-            updatedHistory[lastIndex] = {
+          const lastEntry = updatedHistory[updatedHistory.length - 1];
+          if (lastEntry && lastEntry.type === 'response' && !lastEntry.visual) {
+            updatedHistory[updatedHistory.length - 1] = {
               ...lastEntry,
-              text: lastEntry.text + textChunk
+              text: lastEntry.text + text
             };
+          } else {
+            updatedHistory.push({ type: 'response', text });
           }
           return updatedHistory;
         });
+      };
+
+      const appendVisual = (sysName: string) => {
+        setTerminalHistory(prev => [...prev, { type: 'response', text: '', visual: sysName }]);
+      };
+
+      for await (const textChunk of stream) {
+        buffer += textChunk;
+
+        let match;
+        // Keep checking for tags as long as we find them in the buffer
+        while ((match = /\[DISPLAY_SYSTEM:\s*(.*?)\]/.exec(buffer)) !== null) {
+          const [fullTag, sysName] = match;
+          const tagIndex = match.index;
+
+          // 1. Flush everything before the tag
+          if (tagIndex > 0) {
+            appendText(buffer.substring(0, tagIndex));
+          }
+
+          // 2. Add the visual
+          appendVisual(sysName.trim());
+
+          // 3. Remove the processed part (pre-text + tag) from buffer
+          buffer = buffer.substring(tagIndex + fullTag.length);
+        }
+
+        // Logic to flush the buffer safely if it doesn't look like a tag starts here
+        const openBracketIndex = buffer.indexOf('[');
+        if (openBracketIndex === -1) {
+          // No tag start, safe to flush all
+          if (buffer) {
+            appendText(buffer);
+            buffer = '';
+          }
+        } else {
+          // There is a '[', maybe a tag.
+          // Flush everything before the '['
+          if (openBracketIndex > 0) {
+            appendText(buffer.substring(0, openBracketIndex));
+            buffer = buffer.substring(openBracketIndex);
+          }
+
+          // Check if what remains matches the prefix of our known tag
+          const tagPrefix = "[DISPLAY_SYSTEM:";
+          // If the buffer is "[FOO", it doesn't match "[DIS...".
+          // We only keep it if it *could* be the prefix.
+          // i.e. buffer starts with substring of tagPrefix, or tagPrefix starts with buffer.
+
+          const isPotentialTag = tagPrefix.startsWith(buffer) || buffer.startsWith(tagPrefix);
+
+          if (!isPotentialTag) {
+            // It's just a bracket, flush it.
+            appendText(buffer);
+            buffer = '';
+          }
+        }
+      }
+
+      // Flush any remaining buffer at the end of the stream
+      if (buffer) {
+        appendText(buffer);
       }
     } catch (error) {
       console.error("Error getting AI response:", error);
@@ -264,6 +347,10 @@ function App() {
           colorTheme={currentTheme}
           onSetTerminalColor={setTerminalColor}
           onClearTerminal={handleClearTerminal}
+          shipSystems={shipSystems}
+          onAddSystem={handleAddSystem}
+          onUpdateSystem={handleUpdateSystem}
+          onDeleteSystem={handleDeleteSystem}
         />
         <div className="flex-1 flex flex-col">
           <PlayerTerminal
@@ -272,6 +359,7 @@ function App() {
             onSendCommand={handleSendCommand}
             colorTheme={currentTheme}
             currentUserRole={currentUserRole}
+            shipSystems={shipSystems}
           />
         </div>
       </div>

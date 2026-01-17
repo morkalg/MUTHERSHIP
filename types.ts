@@ -9,13 +9,21 @@ export interface DataLog {
 export interface TerminalEntry {
   type: 'command' | 'response';
   text: string;
+  visual?: string; // e.g., 'SYSTEM_DIAGNOSTIC:ENGINES'
+}
+
+export interface ShipSystem {
+  id: string;
+  name: string;
+  status: 'OPTIMAL' | 'DAMAGED' | 'CRITICAL' | 'OFFLINE';
+  details: string;
 }
 
 export interface CrewMember {
-    id: string;
-    name: string;
-    role: string;
-    password: string;
+  id: string;
+  name: string;
+  role: string;
+  password: string;
 }
 
 export interface ColorTheme {
@@ -27,11 +35,11 @@ export interface ColorTheme {
   selection: string;
   glow: string;
   button: {
-      primary: string;
-      primaryHover: string;
-      secondary: string;
-      secondaryHover: string;
-      danger: string;
-      dangerHover: string;
+    primary: string;
+    primaryHover: string;
+    secondary: string;
+    secondaryHover: string;
+    danger: string;
+    dangerHover: string;
   }
 }
