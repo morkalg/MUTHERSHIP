@@ -183,7 +183,7 @@ function App() {
 
     // --- Standard Command Handling ---
     const commandParts = command.trim().split(/\s+/);
-    const commandAction = commandParts[0].toUpperCase();
+    const commandAction = commandParts[0].toUpperCase(); // Normalize command key
 
     // --- Handle local commands (LOGIN, LOGOUT) ---
     if (commandAction === 'LOGIN' || commandAction === 'LOGON') {
