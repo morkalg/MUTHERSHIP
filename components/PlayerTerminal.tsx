@@ -40,7 +40,10 @@ const PlayerTerminal: React.FC<PlayerTerminalProps> = ({ history, isLoading, onS
   const promptSymbol = currentUserRole ? `[${currentUserRole}]` : '';
 
   return (
-    <div className={`flex flex-col h-full w-full bg-black/50 border-2 p-4 rounded-lg overflow-hidden animated-terminal ${colorTheme.border} ${colorTheme.glow}`}>
+    <div
+      className={`flex flex-col h-full w-full bg-black/50 border-2 p-4 rounded-lg overflow-hidden animated-terminal ${colorTheme.border} ${colorTheme.glow}`}
+      onClick={() => inputRef.current?.focus()}
+    >
       <div className="flex-1 overflow-y-auto pr-2">
         {history.map((entry, index) => (
           <div key={index} className="mb-2 whitespace-pre-wrap break-words">
